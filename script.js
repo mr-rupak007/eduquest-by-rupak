@@ -120,28 +120,42 @@ function updateAuthUI(user) {
 }
 
 async function fetchCourses() {
+
+    // 🔥 ALWAYS START WITH DEMO COURSE
+    courses = [
+        {
+            id: 999,
+            title: "Demo Course (Razorpay Test)",
+            category: "Demo",
+            teacher_name: "EDUQUEST",
+            price: 199,
+            isEnrolled: false,
+            progress: 0,
+            avgRating: 4.5,
+            totalRatings: 100
+        }
+    ];
+
     try {
         const res = await fetch("/api/courses");
 
-        // 🔥 CHECK if response is actually JSON
-        const text = await res.text();
+        // ❌ if backend not available → STOP here
+        if (!res.ok) {
+            console.warn("API not found, using demo data");
+            loadCourses();
+            return;
+        }
 
-        try {
-            const data = JSON.parse(text);
+        const data = await res.json();
 
-            if (Array.isArray(data)) {
-                courses = data;
-            }
-
-        } catch {
-            console.warn("Not JSON → using demo data");
+        if (Array.isArray(data)) {
+            courses = data;
         }
 
     } catch (err) {
-        console.warn("Backend not available → using demo data");
+        console.warn("Fetch failed, using demo data");
     }
 
-    // ✅ ALWAYS load UI
     loadCourses();
 }
 
