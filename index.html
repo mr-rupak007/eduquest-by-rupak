@@ -158,11 +158,35 @@
         </button>
       </div>
 
+      <div class="dash-card">
+        <h1 id="adminTotalEarnings">₹0</h1>
+        <p>Admin Earnings</p>
+
+        <button class="details-btn" onclick="showAdminSection('earnings', this)">
+          💰 View Earnings
+        </button>
+      </div>
+
     </div>
 
     <!-- 🔥 MUST BE INSIDE CONTAINER -->
     <div id="adminUsers" style="margin-top:20px;"></div>
     <div id="adminCourses" style="margin-top:20px; display:none;"></div>
+
+    <div id="adminEarnings" style="margin-top:20px; display:none;">
+      <div class="admin-animate">
+
+        <div class="admin-header">
+          <h2>💰 Earnings</h2>
+          <button class="admin-back-btn" onclick="closeAdminSection()">⬅ Back</button>
+        </div>
+
+        <p>Total Revenue: ₹<span id="totalRevenue">0</span></p>
+        <p>Admin Commission: ₹<span id="adminEarning">0</span></p>
+        <p>Teacher Payout: ₹<span id="teacherPayout">0</span></p>
+    
+      </div>
+    </div>
 
   </div>
 
@@ -379,14 +403,24 @@
       <label>Email</label>
     </div>
 
-    <button class="form-btn" onclick="sendOTP()">Send OTP</button>
+    <button id="sendOtpBtn" class="form-btn" onclick="sendOTP()">Send OTP</button>
+    
+    <p id="otpTimer" style="margin-top:10px; color:#64748b;"></p>
 
     <div id="otpSection" style="display:none; margin-top:15px;">
 
-      <div class="input-group">
-        <input type="text" id="fpOtp" placeholder=" ">
-        <label>Enter OTP</label>
+      <div style="text-align:center; margin:10px 0;">
+        <span style="font-size:13px; color:#64748b;">Enter OTP</span>
       </div>
+
+    <div class="otp-container">
+      <input type="text" maxlength="1" class="otp-input">
+      <input type="text" maxlength="1" class="otp-input">
+      <input type="text" maxlength="1" class="otp-input">
+      <input type="text" maxlength="1" class="otp-input">
+      <input type="text" maxlength="1" class="otp-input">
+      <input type="text" maxlength="1" class="otp-input">
+    </div>
 
       <div class="input-group">
         <input type="password" id="fpNewPass" placeholder=" ">
@@ -423,8 +457,13 @@
 </div>
 
 <div class="input-group">
-  <input type="text" id="contact" placeholder=" " required>
-  <label>Email / Mobile</label>
+  <input type="email" id="email" placeholder=" " required>
+  <label>Email</label>
+</div>
+
+<div class="input-group">
+  <input type="text" id="mobile" placeholder=" " required>
+  <label>Mobile Number</label>
 </div>
 
 <div class="input-group">
@@ -498,8 +537,13 @@
 
   <div class="profile-info">
     <div class="info-row">
-      <span>📧 Contact</span>
-      <span id="viewContact"></span>
+      <span>📧 Email</span>
+      <span id="viewEmail"></span>
+    </div>
+
+    <div class="info-row">
+      <span>📱 Mobile</span>
+      <span id="viewMobile"></span>
     </div>
 
     <div class="info-row">
@@ -531,9 +575,14 @@
   </div>
 
   <div class="input-group">
-    <input type="text" id="profileContact" placeholder=" ">
-    <label>Email / Mobile</label>
-  </div>
+  <input type="email" id="profileEmail" placeholder=" ">
+  <label>Email (cannot change)</label>
+</div>
+
+<div class="input-group">
+  <input type="text" id="profileMobile" placeholder=" ">
+  <label>Mobile (cannot change)</label>
+</div>
 
   <div class="input-group">
     <input type="number" id="profileAge" placeholder=" ">
