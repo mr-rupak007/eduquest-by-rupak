@@ -123,15 +123,25 @@ async function fetchCourses() {
     try {
         const res = await fetch("/api/courses");
 
-        const data = await res.json();
-        if (Array.isArray(data)) {
-            courses = data;
+        // 🔥 CHECK if response is actually JSON
+        const text = await res.text();
+
+        try {
+            const data = JSON.parse(text);
+
+            if (Array.isArray(data)) {
+                courses = data;
+            }
+
+        } catch {
+            console.warn("Not JSON → using demo data");
         }
 
     } catch (err) {
         console.warn("Backend not available → using demo data");
     }
 
+    // ✅ ALWAYS load UI
     loadCourses();
 }
 
