@@ -711,7 +711,8 @@ async function enrollCourse(courseId) {
       showToast("This is a paid course 💰", "warning");
 
       // 👉 call payment flow
-      buyCourse(courseId);
+     const course = courses.find(c => c.id === courseId);
+buyCourse(courseId, course?.price || 199);
       return;
     }
 
@@ -4681,19 +4682,23 @@ courses.push({
     video_url: "https://www.w3schools.com/html/mov_bbb.mp4"
 });
 
-function buyCourse(courseId, price) {
+function buyCourse(courseId, price = 199) {
+
+    if (!price) {
+        showToast("Invalid price ❌", "error");
+        return;
+    }
 
     const options = {
-        key: "rzp_test_xxxxxxxx", // 🔥 your test key (later replace with live key)
+        key: "rzp_test_SYCVDsSEAHbimk",
         amount: price * 100,
         currency: "INR",
         name: "EDUQUEST",
         description: "Course Purchase",
-        handler: function (response) {
 
+        handler: function (response) {
             showToast("Payment Successful 🎉", "success");
 
-            // ✅ mark as enrolled (frontend only)
             const course = courses.find(c => c.id === courseId);
             if (course) {
                 course.isEnrolled = true;
@@ -4701,6 +4706,13 @@ function buyCourse(courseId, price) {
 
             loadCourses();
         },
+
+        prefill: {
+            name: currentUser?.name || "Test User",
+            email: currentUser?.email || "test@example.com",
+            contact: currentUser?.mobile || "9999999999"
+        },
+
         theme: {
             color: "#7c3aed"
         }
