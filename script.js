@@ -3867,7 +3867,6 @@ async function payNow(coursePrice, courseId) {
     currency: "INR",
     name: "EduQuest",
     description: "Course Payment",
-    order_id: order.id,
 
     handler: async function (response) {
 
@@ -4684,19 +4683,21 @@ courses.push({
 
 function buyCourse(courseId, price = 199) {
 
-    if (!price) {
-        showToast("Invalid price ❌", "error");
-        return;
-    }
-
     const options = {
         key: "rzp_test_SYCVDsSEAHbimk",
+
         amount: price * 100,
         currency: "INR",
+
         name: "EDUQUEST",
-        description: "Course Purchase",
+        description: "Course Payment",
+
+        // ❌ VERY IMPORTANT: DO NOT include order_id
+        // order_id: REMOVE if exists anywhere
 
         handler: function (response) {
+            console.log("SUCCESS:", response);
+
             showToast("Payment Successful 🎉", "success");
 
             const course = courses.find(c => c.id === courseId);
@@ -4708,15 +4709,17 @@ function buyCourse(courseId, price = 199) {
         },
 
         prefill: {
-            name: currentUser?.name || "Test User",
-            email: currentUser?.email || "test@example.com",
-            contact: currentUser?.mobile || "9999999999"
+            name: "Test User",
+            email: "test@example.com",
+            contact: "9999999999"
         },
 
         theme: {
             color: "#7c3aed"
         }
     };
+
+    console.log("Opening Razorpay with:", options);
 
     const rzp = new Razorpay(options);
     rzp.open();
