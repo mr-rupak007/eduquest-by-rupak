@@ -14,6 +14,10 @@ let selectedCourseId = null;
 let currentOpenPanel = null;
 let earningsChartInstance = null;
 let chartVisible = false;
+let otpCooldown = false;
+let timerInterval;
+
+
 
 const admin = {
     username: "admin",
@@ -117,27 +121,18 @@ function updateAuthUI(user) {
 
 async function fetchCourses() {
     try {
-        const token = localStorage.getItem("token");
-        const res = await fetch("/api/courses", {
-          headers: {
-            "Authorization": "Bearer " + token
-         }
-        });
-        const data = await res.json();
+        const res = await fetch("/api/courses");
 
-        if (!Array.isArray(data)) {
-            console.error("Invalid course data");
-            return;
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            courses = data;
         }
 
-        courses = data;
-
-        loadCourses(); // render UI
-
     } catch (err) {
-        console.error("Fetch courses error:", err);
-        showToast("Failed to load courses", "error");
+        console.warn("Backend not available → using demo data");
     }
+
+    loadCourses();
 }
 
 function initApp() {
@@ -377,16 +372,29 @@ function showSection(id, el = null) {
 async function register() {
     const role = document.getElementById("role").value;
     const name = document.getElementById("fullName").value;
-    const contact = document.getElementById("contact").value;
+    const email = document.getElementById("email").value.trim();
+    const mobile = document.getElementById("mobile").value.trim();
     const age = document.getElementById("age").value;
     const location = document.getElementById("location").value;
     const pass = document.getElementById("regPass").value;
     const confirm = document.getElementById("confirmPass").value;
 
-    if (!role || !name || !contact || !age || !location || !pass || !confirm) {
-        showToast("Fill all fields", "error");
-        return;
-    }
+    if (!role || !name || !email || !mobile || !age || !location || !pass || !confirm) {
+    showToast("Fill all fields", "error");
+    return;
+}
+
+// ✅ email check
+if (!email.includes("@")) {
+    showToast("Invalid email", "error");
+    return;
+}
+
+// ✅ mobile check
+if (!/^[6-9]\d{9}$/.test(mobile)) {
+    showToast("Invalid mobile number", "error");
+    return;
+}
 
     if (pass !== confirm) {
         showToast("Passwords do not match", "error");
@@ -398,13 +406,14 @@ async function register() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                name,
-                contact,
-                password: pass,
-                role,
-                age,
-                location
-            })
+              name,
+              email,
+              mobile,
+              password: pass,
+              role,
+              age,
+              location
+          })
         });
 
         const data = await res.json();
@@ -480,22 +489,25 @@ async function login() {
 
         showProfileHint();
 
-        if (data.user.role === "teacher") {
-            showSection("teacherDashboard");
-        } else if (data.user.role === "admin") {
-            showSection("adminPanel");
-        } else {
-            showSection("dashboard");
-        }
-        if (data.user.role === "teacher") {
+        // 🔥 ROLE-BASED REDIRECTION (CLEAN)
 
-        if (!isTeacherProfileComplete(data.user)) {
-            showToast("Complete your profile first ⚠️", "warning");
-            return showSection("profile");
-        }
+           if (data.user.role === "teacher") {
 
-        showSection("teacherDashboard");
-    }
+               if (!isTeacherProfileComplete(data.user)) {
+                   showToast("Complete your profile first ⚠️", "warning");
+                   return showSection("profile");
+               }
+
+               return showSection("teacherDashboard");
+           }
+
+           else if (data.user.role === "admin") {
+               return showSection("adminPanel");
+           }
+
+           else {
+               return showSection("dashboard");
+           }
 
     } catch (err) {
         console.error("LOGIN ERROR:", err);
@@ -1965,7 +1977,6 @@ async function addCourse() {
     }
 }
 
-
 async function loadAdminPanel() {
 
     const usersEl = document.getElementById("adminUsers");
@@ -2007,7 +2018,7 @@ async function loadAdminPanel() {
                     <button class="admin-back-btn" onclick="closeAdminSection()">⬅ Back</button>
                 </div>
 
-                <!-- 🔥 STUDENTS -->
+                <!-- STUDENTS -->
                 <div class="collapsible-section">
                     <div class="collapsible-header" onclick="toggleUserSection(this)">
                         👨‍🎓 Students (${students.length})
@@ -2018,14 +2029,27 @@ async function loadAdminPanel() {
                         ${students.map(u => `
                             <div class="dash-card">
                                 <h4>${u.name || "No Name"}</h4>
-                                <p>${u.contact}</p>
+                                <p>${u.email}<br>${u.mobile}</p>
                                 <span class="role-tag role-student">Student</span>
+
+                                <div class="admin-actions">
+                                    <button class="admin-btn delete"
+                                        onclick="deleteUser(${u.id})">
+                                        🗑 Delete
+                                    </button>
+
+                                    <button class="admin-btn block"
+                                        onclick="toggleBlockUser(${u.id}, ${u.is_blocked})">
+                                        ${u.is_blocked ? "✅ Unblock" : "🚫 Block"}
+                                    </button>
+                                </div>
+
                             </div>
                         `).join("")}
                     </div>
                 </div>
 
-                <!-- 🔥 TEACHERS -->
+                <!-- TEACHERS -->
                 <div class="collapsible-section">
                     <div class="collapsible-header" onclick="toggleUserSection(this)">
                         👨‍🏫 Teachers (${teachers.length})
@@ -2036,8 +2060,21 @@ async function loadAdminPanel() {
                         ${teachers.map(u => `
                             <div class="dash-card">
                                 <h4>${u.name || "No Name"}</h4>
-                                <p>${u.contact}</p>
+                                <p>${u.email}<br>${u.mobile}</p>
                                 <span class="role-tag role-teacher">Teacher</span>
+
+                                <div class="admin-actions">
+                                    <button class="admin-btn delete"
+                                        onclick="deleteUser(${u.id})">
+                                        🗑 Delete
+                                    </button>
+
+                                    <button class="admin-btn block"
+                                        onclick="toggleBlockUser(${u.id}, ${u.is_blocked})">
+                                        ${u.is_blocked ? "✅ Unblock" : "🚫 Block"}
+                                    </button>
+                                </div>
+
                             </div>
                         `).join("")}
                     </div>
@@ -2046,7 +2083,7 @@ async function loadAdminPanel() {
             </div>
         `;
 
-        // ================= COURSES =================
+        // ================= COURSES (UNCHANGED) =================
         const pending = courses.filter(c => c.status === "pending");
         const approved = courses.filter(c => c.status === "approved");
         const rejected = courses.filter(c => c.status === "rejected");
@@ -2074,11 +2111,7 @@ async function loadAdminPanel() {
                                     <div class="course-actions">
                                         <button onclick="approveCourse('${c.id}', this)" class="btn-approve">Approve</button>
                                         <button onclick="rejectCourse('${c.id}', this)" class="btn-reject">Reject</button>
-                                    
-                                        <!-- 🔥 NEW DELETE -->
-                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">
-                                            🗑 Delete
-                                        </button>
+                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">🗑 Delete</button>
                                     </div>
                                 </div>
                             `).join("")
@@ -2095,12 +2128,9 @@ async function loadAdminPanel() {
                                     <h4>${c.title}</h4>
                                     <p>${c.category}</p>
                                     <span>👨‍🏫 ${c.teacher_name || "Unknown"}</span>
-                                
-                                    <!-- 🔥 DELETE BUTTON -->
+
                                     <div class="course-actions">
-                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">
-                                            🗑 Delete
-                                        </button>
+                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">🗑 Delete</button>
                                     </div>
                                 </div>
                             `).join("")
@@ -2117,12 +2147,9 @@ async function loadAdminPanel() {
                                     <h4>${c.title}</h4>
                                     <p>${c.category}</p>
                                     <span>👨‍🏫 ${c.teacher_name || "Unknown"}</span>
-                                
-                                    <!-- 🔥 DELETE BUTTON -->
+
                                     <div class="course-actions">
-                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">
-                                            🗑 Delete
-                                        </button>
+                                        <button onclick="deleteCourse('${c.id}')" class="delete-btn">🗑 Delete</button>
                                     </div>
                                 </div>
                             `).join("")
@@ -2139,6 +2166,9 @@ async function loadAdminPanel() {
         coursesEl.style.display = "none";
         currentAdminView = "users";
 
+        const earningsEl = document.getElementById("adminEarnings");
+        if (earningsEl) earningsEl.style.display = "none";
+
         setTimeout(() => {
             document.querySelectorAll(".admin-animate").forEach(el => {
                 el.classList.add("show");
@@ -2151,6 +2181,68 @@ async function loadAdminPanel() {
         coursesEl.innerHTML = "<p>Error loading courses</p>";
     }
 }
+
+
+async function deleteUser(userId) {
+
+    if (!confirm("Are you sure you want to delete this user?")) return;
+
+    try {
+        const token = localStorage.getItem("token");
+
+        const res = await fetch(`/api/admin/users/${userId}`, {
+            method: "DELETE",
+            headers: {
+                "Authorization": "Bearer " + token
+            }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.message || "Delete failed", "error");
+            return;
+        }
+
+        showToast("User deleted 🗑", "success");
+
+        loadAdminPanel(); // refresh
+
+    } catch (err) {
+        console.error(err);
+        showToast("Server error", "error");
+    }
+}
+
+async function toggleBlockUser(userId, isBlocked) {
+
+    try {
+        const token = localStorage.getItem("token");
+
+        const res = await fetch(`/api/admin/users/block/${userId}`, {
+            method: "PUT",
+            headers: {
+                "Authorization": "Bearer " + token
+            }
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.message || "Action failed", "error");
+            return;
+        }
+
+        showToast(isBlocked ? "User unblocked ✅" : "User blocked 🚫", "success");
+
+        loadAdminPanel(); // refresh
+
+    } catch (err) {
+        console.error(err);
+        showToast("Server error", "error");
+    }
+}
+
 
 function toggleUserSection(header) {
 
@@ -2236,10 +2328,11 @@ window.closeAdminSection = function() {
 
     const usersEl = document.getElementById("adminUsers");
     const coursesEl = document.getElementById("adminCourses");
+    const earningsEl = document.getElementById("adminEarnings");
 
     if (!usersEl || !coursesEl) return;
 
-    // 🔥 ANIMATE OUT
+    // Animate out
     document.querySelectorAll(".admin-animate").forEach(el => {
         el.classList.remove("show");
         el.classList.add("hide");
@@ -2248,12 +2341,15 @@ window.closeAdminSection = function() {
     setTimeout(() => {
         usersEl.style.display = "none";
         coursesEl.style.display = "none";
+        if (earningsEl) earningsEl.style.display = "none";
     }, 250);
 
+    // remove active buttons
     document.querySelectorAll("#adminPanel .details-btn").forEach(b => {
         b.classList.remove("active");
     });
 
+    // 🔥 RESET STATE
     currentAdminView = null;
 
     resetNav([
@@ -2588,15 +2684,17 @@ function loadProfile() {
 
     if (!currentUser) return;
 
-    // ================= VIEW MODE DATA =================
+    // ================= VIEW MODE =================
     document.getElementById("viewName").innerText = currentUser.name || "";
-    document.getElementById("viewContact").innerText = currentUser.contact || "";
+    document.getElementById("viewEmail").innerText = currentUser.email || "";
+    document.getElementById("viewMobile").innerText = currentUser.mobile || "";
     document.getElementById("viewAge").innerText = currentUser.age || "";
     document.getElementById("viewLocation").innerText = currentUser.location || "";
 
-    // ================= EDIT INPUTS =================
+    // ================= EDIT MODE (PREFILL) =================
     document.getElementById("profileFullName").value = currentUser.name || "";
-    document.getElementById("profileContact").value = currentUser.contact || "";
+    document.getElementById("profileEmail").value = currentUser.email || "";
+    document.getElementById("profileMobile").value = currentUser.mobile || "";
     document.getElementById("profileAge").value = currentUser.age || "";
     document.getElementById("profileLocation").value = currentUser.location || "";
 
@@ -2605,42 +2703,42 @@ function loadProfile() {
 
     if (teacherFields) {
         if (currentUser.role === "teacher") {
+
             teacherFields.style.display = "block";
 
             document.getElementById("profileSubject").value = currentUser.subject || "";
             document.getElementById("profileSpecialization").value = currentUser.specialization || "";
             document.getElementById("profileOccupation").value = currentUser.occupation || "";
+
         } else {
             teacherFields.style.display = "none";
         }
     }
 
-   // ================= 🔥 PROFILE COMPLETION LOGIC =================
-const isComplete = isTeacherProfileComplete(currentUser);
+    // ================= PROFILE COMPLETION LOGIC =================
+    const isComplete = isTeacherProfileComplete(currentUser);
 
-// get buttons properly (based on your HTML)
-const editBtn = document.querySelector(".profile-btn");
-const saveBtn = document.querySelector("#profileEdit .form-btn");
+    const editBtn = document.querySelector(".profile-btn");
+    const saveBtn = document.querySelector("#profileEdit .form-btn");
 
-// 👉 FORCE COMPLETE MODE
-if (currentUser.role === "teacher" && !isComplete) {
+    if (currentUser.role === "teacher" && !isComplete) {
 
-    document.getElementById("profileView").style.display = "none";
-    document.getElementById("profileEdit").style.display = "block";
+        document.getElementById("profileView").style.display = "none";
+        document.getElementById("profileEdit").style.display = "block";
 
-    if (editBtn) editBtn.style.display = "none";
+        if (editBtn) editBtn.style.display = "none";
 
-    if (saveBtn) saveBtn.innerText = "Complete Profile ✅";
+        if (saveBtn) saveBtn.innerText = "Complete Profile ✅";
 
-} else {
+    } else {
 
-    document.getElementById("profileView").style.display = "block";
-    document.getElementById("profileEdit").style.display = "none";
+        document.getElementById("profileView").style.display = "block";
+        document.getElementById("profileEdit").style.display = "none";
 
-    if (editBtn) editBtn.style.display = "inline-block";
+        if (editBtn) editBtn.style.display = "inline-block";
 
-    if (saveBtn) saveBtn.innerText = "Save Changes";
-}
+        if (saveBtn) saveBtn.innerText = "Save Changes";
+    }
 }
 
 async function saveProfile() {
@@ -2648,40 +2746,52 @@ async function saveProfile() {
     const token = localStorage.getItem("token");
 
     const name = document.getElementById("profileFullName").value.trim();
-    const contact = document.getElementById("profileContact").value.trim();
+    const email = document.getElementById("profileEmail").value.trim();
+    const mobile = document.getElementById("profileMobile").value.trim();
     const age = document.getElementById("profileAge").value.trim();
     const location = document.getElementById("profileLocation").value.trim();
+
     const password = document.getElementById("profilePass")?.value || "";
     const confirmPassword = document.getElementById("confirmProfilePass")?.value || "";
-    const subject = document.getElementById("profileSubject").value;
-    const specialization = document.getElementById("profileSpecialization").value;
-    const occupation = document.getElementById("profileOccupation").value;
-    // 🔥 VALIDATION
-    if (!name || !contact || !age || !location) {
-        showToast("Please fill all fields ⚠️", "warning");
-        return;
-    }
 
+    const subject = document.getElementById("profileSubject")?.value;
+    const specialization = document.getElementById("profileSpecialization")?.value;
+    const occupation = document.getElementById("profileOccupation")?.value;
+
+    const updateData = {};
+
+    // ✅ OPTIONAL FIELDS (only if changed)
+    if (name && name !== currentUser.name) updateData.name = name;
+    if (email && email !== currentUser.email) updateData.email = email;
+    if (mobile && mobile !== currentUser.mobile) updateData.mobile = mobile;
+    if (age && age !== String(currentUser.age)) updateData.age = age;
+    if (location && location !== currentUser.location) updateData.location = location;
+
+    // 👨‍🏫 TEACHER
     if (currentUser.role === "teacher") {
-        if (!subject || !specialization || !occupation) {
-            showToast("Teachers must provide Subject, Specialization, and Occupation 👨‍🏫", "warning");
-            return;
-        }
+        if (subject && subject !== currentUser.subject) updateData.subject = subject;
+        if (specialization && specialization !== currentUser.specialization) updateData.specialization = specialization;
+        if (occupation && occupation !== currentUser.occupation) updateData.occupation = occupation;
     }
 
-    // 🔐 PASSWORD VALIDATION
+    // 🔐 PASSWORD (optional)
     if (password) {
-    
         if (password.length < 6) {
             showToast("Password must be at least 6 characters 🔒", "warning");
             return;
         }
-    
+
         if (password !== confirmPassword) {
             showToast("Passwords do not match ❌", "error");
             return;
         }
-    
+
+        updateData.password = password;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        showToast("No changes made ⚠️", "warning");
+        return;
     }
 
     try {
@@ -2691,16 +2801,7 @@ async function saveProfile() {
                 "Content-Type": "application/json",
                 "Authorization": "Bearer " + token
             },
-            body: JSON.stringify({
-                name,
-                contact,
-                age,
-                location,
-                password,
-                subject,
-                specialization,
-                occupation
-            })
+            body: JSON.stringify(updateData)
         });
 
         const data = await res.json();
@@ -2710,11 +2811,9 @@ async function saveProfile() {
             return;
         }
 
-        // 🔥 UPDATE LOCAL USER
         currentUser = data.user;
         localStorage.setItem("user", JSON.stringify(data.user));
 
-        // 🔥 REFRESH UI
         loadProfile();
         updateUserUI(currentUser);
 
@@ -2722,9 +2821,6 @@ async function saveProfile() {
         document.getElementById("profileEdit").style.display = "none";
 
         showToast("Profile updated successfully ✅", "success");
-        
-        document.getElementById("profilePass").value = "";
-        document.getElementById("confirmProfilePass").value = "";
 
     } catch (err) {
         console.error(err);
@@ -2767,8 +2863,30 @@ function viewProfile() {
 }
 
 function enableEdit() {
+
     document.getElementById("profileView").style.display = "none";
     document.getElementById("profileEdit").style.display = "block";
+
+    // ✅ PREFILL EVERYTHING
+    document.getElementById("profileFullName").value = currentUser.name || "";
+    document.getElementById("profileEmail").value = currentUser.email || "";
+    document.getElementById("profileMobile").value = currentUser.mobile || "";
+    document.getElementById("profileAge").value = currentUser.age || "";
+    document.getElementById("profileLocation").value = currentUser.location || "";
+
+    // 🔥 FORCE TEACHER FIELDS
+    if (currentUser.role === "teacher") {
+
+        const teacherSection = document.getElementById("teacherProfileFields");
+        teacherSection.style.display = "block";
+
+        document.getElementById("profileSubject").value = currentUser.subject || "";
+        document.getElementById("profileSpecialization").value = currentUser.specialization || "";
+        document.getElementById("profileOccupation").value = currentUser.occupation || "";
+
+    } else {
+        document.getElementById("teacherProfileFields").style.display = "none";
+    }
 }
 
 function closeProfile() {
@@ -3937,58 +4055,103 @@ function goBackNav() {
 }
 
 // ================= BULLETPROOF ADMIN SECTION SWITCHER =================
-window.showAdminSection = function(type, btn = null) {
+window.showAdminSection = async function(type, btn = null) {
+
     console.log("Admin tab clicked:", type);
 
     const usersEl = document.getElementById("adminUsers");
     const coursesEl = document.getElementById("adminCourses");
+    const earningsEl = document.getElementById("adminEarnings");
 
     if (!usersEl || !coursesEl) {
-        console.error("Admin containers not found on the page!");
+        console.error("Containers missing");
         return;
     }
 
-    // 1. Reset Breadcrumb to base Admin Panel state
+    // 🔥 TOGGLE CLOSE (KEY LOGIC)
+    if (currentAdminView === type) {
+        closeAdminSection();
+        return;
+    }
+
+    // ================= RESET NAV =================
     resetNav([
         { label: "Home", onclick: "showSection('browse')" },
         { label: "Admin Panel", onclick: "showSection('adminPanel')" }
     ]);
 
-    // 2. Push the specific section to the breadcrumb stack
-    if (type === "users") {
-        pushNav("Users");
-    } else if (type === "courses") {
-        pushNav("Courses");
-    }
+    if (type === "users") pushNav("Users");
+    else if (type === "courses") pushNav("Courses");
+    else if (type === "earnings") pushNav("Earnings");
 
-    // 3. UI Toggling Logic
+    updateBreadcrumb();
+
+    // ================= HIDE ALL =================
     usersEl.style.display = "none";
     coursesEl.style.display = "none";
-    
+    if (earningsEl) earningsEl.style.display = "none";
+
+    // Remove active button
     document.querySelectorAll(".details-btn").forEach(b => {
         b.classList.remove("active");
     });
 
     if (btn) btn.classList.add("active");
 
+    // ================= SHOW =================
     if (type === "users") {
         usersEl.style.display = "block";
-        usersEl.style.opacity = "1";
-        const anim = usersEl.querySelector(".admin-animate");
-        if(anim) {
-            anim.classList.remove("hide");
-            anim.classList.add("show");
-        }
-    } else if (type === "courses") {
-        coursesEl.style.display = "block";
-        coursesEl.style.opacity = "1";
-        const anim = coursesEl.querySelector(".admin-animate");
-        if(anim) {
-            anim.classList.remove("hide");
-            anim.classList.add("show");
-        }
+        animateSection(usersEl);
     }
+
+    else if (type === "courses") {
+        coursesEl.style.display = "block";
+        animateSection(coursesEl);
+    }
+
+    else if (type === "earnings") {
+        earningsEl.style.display = "block";
+        animateSection(earningsEl);
+        await loadEarnings();
+    }
+
+    // 🔥 TRACK CURRENT VIEW
+    currentAdminView = type;
 };
+
+function animateSection(el) {
+    el.style.opacity = "1";
+    const anim = el.querySelector(".admin-animate");
+    if (anim) {
+        anim.classList.remove("hide");
+        anim.classList.add("show");
+    }
+}
+
+async function loadEarnings() {
+    try {
+        const token = localStorage.getItem("token");
+
+        const res = await fetch("/api/admin/earnings", {
+            headers: {
+                "Authorization": "Bearer " + token
+            }
+        });
+
+        const data = await res.json();
+
+        document.getElementById("totalRevenue").innerText = data.totalRevenue || 0;
+        document.getElementById("adminEarning").innerText = data.adminEarning || 0;
+        document.getElementById("teacherPayout").innerText = data.teacherPayout || 0;
+
+        // dashboard card update
+        document.getElementById("adminTotalEarnings").innerText =
+            "₹" + (data.adminEarning || 0);
+
+    } catch (err) {
+        console.error("Earnings load error:", err);
+    }
+}
 
 function isTeacherProfileComplete(user) {
     if (!user) return false;
@@ -4337,66 +4500,228 @@ function toggleChart() {
 }
 
 async function sendOTP() {
-  const contact = document.getElementById("fpContact").value;
+  const email = document.getElementById("fpContact").value.trim(); // ✅ FIXED
+  const btn = document.getElementById("sendOtpBtn");
+  const otpSection = document.getElementById("otpSection");
 
-  if (!contact) {
-    showToast("Enter contact", "error");
+  // 🔒 VALIDATION
+  if (!email) {
+    showToast("Enter email", "error");
     return;
   }
 
-  const res = await fetch("/api/auth/forgot-password", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ contact })
-  });
+  if (!email.includes("@")) { // ✅ FIXED
+    showToast("Enter valid email", "error");
+    return;
+  }
 
-  const data = await res.json();
+  // ⏱ COOLDOWN CHECK
+  if (otpCooldown) {
+    showToast("Wait 60 seconds before retry", "warning");
+    return;
+  }
 
-  if (!res.ok) {
-  showToast(data.message || "Error", "error");
-  return;
-}
+  try {
+    // 🔄 LOADING STATE
+    btn.classList.add("loading");
 
-showToast(data.message, "success");
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }) // ✅ CORRECT
+    });
 
-  // 🔥 SHOW OTP INPUT
-  document.getElementById("otpSection").style.display = "block";
+    const data = await res.json();
 
-  // 🔥 DEV MODE SHOW OTP
-  if (data.otp) {
-    showToast("OTP: " + data.otp, "warning");
+    // ❌ ERROR
+    if (!res.ok) {
+      showToast(data.message || "Failed to send OTP", "error");
+      return;
+    }
+
+    // ✅ SUCCESS
+    showToast(data.message, "success");
+
+    // 🔥 SHOW OTP SECTION
+    otpSection.style.display = "block";
+
+    // 🔥 DISABLE BUTTON 
+    btn.disabled = true;
+
+    // 🔥 CLEAR OLD OTP INPUTS
+    document.querySelectorAll(".otp-input").forEach(input => input.value = "");
+
+    // ⏱ START TIMER
+    startOTPTimer();
+
+    // 🔥 START COOLDOWN
+    otpCooldown = true;
+    setTimeout(() => {
+      otpCooldown = false;
+    }, 60000);
+
+  } catch (err) {
+    console.error("OTP ERROR:", err);
+    showToast("Server error", "error");
+  } finally {
+    // 🔄 REMOVE LOADING
+    btn.classList.remove("loading");
   }
 }
 
+function startOTPTimer() {
+  let time = 60;
+  const timerEl = document.getElementById("otpTimer");
+  const btn = document.getElementById("sendOtpBtn");
+
+  clearInterval(timerInterval);
+
+  timerInterval = setInterval(() => {
+    timerEl.innerText = `Resend OTP in ${time}s`;
+    time--;
+
+    if (time < 0) {
+      clearInterval(timerInterval);
+
+      timerEl.innerText = "You can resend OTP now";
+      btn.disabled = false;
+      btn.innerText = "Resend OTP";
+    }
+  }, 1000);
+}
+
+function getOTPValue() {
+  const inputs = document.querySelectorAll(".otp-input");
+  return Array.from(inputs).map(i => i.value).join("");
+}
 
 async function resetPassword() {
-  const contact = document.getElementById("fpContact").value;
-  const otp = document.getElementById("fpOtp").value;
-  const newPassword = document.getElementById("fpNewPass").value;
+  const contact = document.getElementById("fpContact").value.trim();
+  const otp = Array.from(document.querySelectorAll(".otp-input"))
+    .map(input => input.value)
+    .join("");
+  const newPassword = document.getElementById("fpNewPass").value.trim();
 
+  // 🔒 VALIDATION
   if (!contact || !otp || !newPassword) {
     showToast("Fill all fields", "error");
     return;
   }
 
-  const res = await fetch("/api/auth/reset-password", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      contact,
-      otp,
-      newPassword
-    })
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    showToast(data.message, "error");
+  if (!contact.includes("@")) {
+    showToast("Enter valid email", "error");
     return;
   }
 
-  showToast("Password reset success 🎉", "success");
+  if (otp.length !== 6 || isNaN(otp)) {
+    showToast("Enter valid 6-digit OTP", "error");
+    return;
+  }
 
-  showSection("login");
+  if (newPassword.length < 6) {
+    showToast("Password must be at least 6 characters", "error");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contact,
+        otp,
+        newPassword
+      })
+    });
+
+    const data = await res.json();
+
+    // ❌ ERROR
+    if (!res.ok) {
+      showToast(data.message || "Reset failed", "error");
+      return;
+    }
+
+    // ✅ SUCCESS
+    showToast("Password reset successful 🎉", "success");
+
+    // 🔥 CLEAR INPUTS
+    document.querySelectorAll(".otp-input").forEach(input => input.value = "");
+    document.getElementById("fpNewPass").value = "";
+
+    // 🔥 HIDE OTP SECTION
+    document.getElementById("otpSection").style.display = "none";
+
+    // 🔥 REDIRECT TO LOGIN
+    setTimeout(() => {
+      showSection("login");
+    }, 1000);
+
+  } catch (err) {
+    console.error("RESET ERROR:", err);
+    showToast("Server error", "error");
+  }
+}
+
+// 🔥 OTP INPUT AUTO MOVE
+document.addEventListener("input", (e) => {
+  if (e.target.classList.contains("otp-input")) {
+    if (e.target.value.length === 1) {
+      const next = e.target.nextElementSibling;
+      if (next) next.focus();
+    }
+  }
+});
+
+// 🔥 BACKSPACE SUPPORT
+document.addEventListener("keydown", (e) => {
+  if (e.target.classList.contains("otp-input") && e.key === "Backspace") {
+    if (!e.target.value) {
+      const prev = e.target.previousElementSibling;
+      if (prev) prev.focus();
+    }
+  }
+});
+
+// 🔥 DEMO COURSE (FOR RAZORPAY VERIFICATION)
+courses.push({
+    id: 999,
+    title: "Frontend Demo Course",
+    category: "Demo",
+    teacher_name: "EDUQUEST",
+    price: 199,
+    isEnrolled: false,
+    progress: 0,
+    avgRating: 4.5,
+    totalRatings: 120,
+    video_url: "https://www.w3schools.com/html/mov_bbb.mp4"
+});
+
+function buyCourse(courseId, price) {
+
+    const options = {
+        key: "rzp_test_xxxxxxxx", // 🔥 your test key (later replace with live key)
+        amount: price * 100,
+        currency: "INR",
+        name: "EDUQUEST",
+        description: "Course Purchase",
+        handler: function (response) {
+
+            showToast("Payment Successful 🎉", "success");
+
+            // ✅ mark as enrolled (frontend only)
+            const course = courses.find(c => c.id === courseId);
+            if (course) {
+                course.isEnrolled = true;
+            }
+
+            loadCourses();
+        },
+        theme: {
+            color: "#7c3aed"
+        }
+    };
+
+    const rzp = new Razorpay(options);
+    rzp.open();
 }
