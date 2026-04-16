@@ -3919,80 +3919,40 @@ async function payNow(coursePrice, courseId) {
   rzp.open();
 }
 
-async function buyCourse(courseId, price) {
-  const token = localStorage.getItem("token");
-
-  try {
-    const res = await fetch("/api/payment/create-order", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        amount: price,
-        courseId
-      })
-    });
-
-    const data = await res.json();
+function buyCourse(courseId, price) {
 
     const options = {
-      key: "rzp_test_SYCVDsSEAHbimk", // ✅ FIXED
-      amount: data.order.amount,
-      currency: "INR",
-      name: "EduQuest",
-      description: "Course Purchase",
-      order_id: data.order.id,
+        key: "rzp_test_SYCVDsSEAHbimk", // ✅ your correct key
+        amount: price * 100,
+        currency: "INR",
+        name: "EDUQUEST",
+        description: "Course Purchase",
 
-      handler: async function (response) {
+        handler: function (response) {
+            showToast("Payment Successful 🎉", "success");
 
-        console.log("PAYMENT SUCCESS:", response);
+            // ✅ mark as enrolled (frontend only)
+            const course = courses.find(c => c.id === courseId);
+            if (course) {
+                course.isEnrolled = true;
+            }
 
-        try {
-          const verifyRes = await fetch("/api/payment/verify", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer " + token
-            },
-            body: JSON.stringify({
-              ...response,
-              courseId,
-              amount: data.order.amount / 1
-            })
-          });
+            loadCourses();
+        },
 
-          const verifyData = await verifyRes.json();
+        prefill: {
+            name: "Test User",
+            email: "test@example.com",
+            contact: "9999999999"
+        },
 
-          console.log("VERIFY RESPONSE:", verifyData);
-
-          if (verifyData.success) {
-            alert("Payment successful 🎉");
-            fetchCourses();
-          } else {
-            alert("Payment verification failed ❌");
-          }
-
-        } catch (err) {
-          console.error("VERIFY ERROR:", err);
-          alert("Something went wrong ❌");
+        theme: {
+            color: "#7c3aed"
         }
-      },
-
-      modal: {
-        ondismiss: function () {
-          console.log("Payment popup closed");
-        }
-      }
     };
 
     const rzp = new Razorpay(options);
     rzp.open();
-
-  } catch (err) {
-    console.error("ORDER ERROR:", err);
-    alert("Payment initialization failed ❌");
-  }
 }
 
 function togglePriceField() {
